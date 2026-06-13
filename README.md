@@ -1,41 +1,79 @@
-# Next.js on Netlify Platform Starter
+function doGet() {
+  return HtmlService.createTemplateFromFile('index')
+      .evaluate()
+      .setTitle('ระบบจัดการและแสดงข้อมูลตารางทริป (Red Theme)')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
 
-[Live Demo](https://nextjs-platform-starter.netlify.app/)
+// ฟังก์ชันดึงรายชื่อชีททั้งหมด เพื่อเอาไปทำ Dropdown เลือกเดือน/ทริป
+function getSheetNames() {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheets = ss.getSheets();
+    return sheets.map(function(sheet) {
+      return sheet.getName();
+    });
+  } catch (e) {
+    return ["Sheet1"];
+  }
+}
 
-A modern starter based on Next.js 14 (App Router), Tailwind, and [Netlify Core Primitives](https://docs.netlify.com/core/overview/#develop) (Edge Functions, Image CDN, Blob Store).
-
-In this site, Netlify Core Primitives are used both implictly for running Next.js features (e.g. Route Handlers, image optimization via `next/image`, and more) and also explicitly by the user code.
-
-Implicit usage means you're using any Next.js functionality and everything "just works" when deployed - all the plumbing is done for you. Explicit usage is framework-agnostic and typically provides more features than what Next.js exposes.
-
-## Deploying to Netlify
-
-This site requires [Netlify Next Runtime v5](https://docs.netlify.com/frameworks/next-js/overview/) for full functionality. That version is now being gradually rolled out to all Netlify accounts.
-
-After deploying via the button below, please visit the **Site Overview** page for your new site to check whether it is already using the v5 runtime. If not, you'll be prompted to opt-in to to v5.
-
-[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/netlify-templates/next-platform-starter)
-
-## Developing Locally
-
-1. Clone this repository, then run `npm install` in its root directory.
-
-2. For the starter to have full functionality locally (e.g. edge functions, blob store), please ensure you have an up-to-date version of Netlify CLI. Run:
-
-```
-npm install netlify-cli@latest -g
-```
-
-3. Link your local repository to the deployed Netlify site. This will ensure you're using the same runtime version for both local development and your deployed site.
-
-```
-netlify link
-```
-
-4. Then, run the Next.js development server via Netlify CLI:
-
-```
-netlify dev
-```
-
-If your browser doesn't navigate to the site automatically, visit [localhost:8888](http://localhost:8888).
+// ฟังก์ชันดึงข้อมูลจากชีทที่เลือก
+function getSheetData(sheetName) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    sheet = ss.getSheets()[0];
+  }
+  
+  var values = sheet.getDataRange().getValues();
+  var data = [];
+  var headers = [];
+  var startRow = -1;
+  
+  // ค้นหาแถวที่เป็น Header จริงๆ (แถวที่มีคำว่า GROUP หรือ BAS หรือ JENIS BAS)
+  for (var i = 0; i < values.length; i++) {
+    for (var j = 0; j < values[i].length; j++) {
+      var val = String(values[i][j]).toUpperCase();
+      if (val.indexOf('GROUP') > -1 || val.indexOf('BAS') > -1 || val.indexOf('HOTEL') > -1) {
+        startRow = i;
+        break;
+      }
+    }
+    if (startRow > -1) break;
+  }
+  
+  // ถ้าหาแถว Header ไม่เจอเลย ให้ใช้แถวแรกเป็นหลัก
+  if (startRow == -1) startRow = 0;
+  
+  // จัดการ Header และแปลงค่าว่างให้พร้อมแสดงผล
+  headers = values[startRow].map(function(h) { return h ? String(h).trim() : ""; });
+  
+  // อ่านข้อมูลตั้งแต่แถวถัดจาก Header ลงไป
+  for (var r = startRow + 1; r < values.length; r++) {
+    var rowData = values[r];
+    // ตรวจสอบว่าเป็นแถวที่มีข้อมูลจริงไหม (ไม่ใช่แถวว่างยาวๆ)
+    var hasData = rowData.some(function(cell) { return cell !== ""; });
+    if (hasData) {
+      var obj = {};
+      var hasActualContent = false;
+      
+      headers.forEach(function(header, index) {
+        var cellValue = rowData[index] !== undefined ? String(rowData[index]).trim() : "";
+        var key = header || "Column_" + (index + 1);
+        obj[key] = cellValue;
+        if (cellValue) hasActualContent = true;
+      });
+      
+      if (hasActualContent) {
+        data.push(obj);
+      }
+    }
+  }
+  
+  return {
+    headers: headers.filter(function(h) { return h !== ""; }), // กรองเอาเฉพาะคอลัมน์ที่มีหัวข้อ
+    rows: data
+  };
+}
